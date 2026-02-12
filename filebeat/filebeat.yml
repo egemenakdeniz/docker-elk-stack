@@ -1,0 +1,23 @@
+filebeat.inputs:
+  - type: container
+    enabled: true
+    paths:
+      - /var/lib/docker/containers/*/*.log
+
+processors:
+  - add_docker_metadata:
+      host: "unix:///var/run/docker.sock"
+
+  - drop_event:
+      when:
+        or:
+          - equals: { container.name: "elasticsearch" }
+          - equals: { container.name: "kibana" }
+          - equals: { container.name: "logstash" }
+          - equals: { container.name: "filebeat" }
+          - equals: { container.name: "metricbeat" }
+
+output.logstash:
+  hosts: ["logstash:5044"]
+
+setup.ilm.enabled: false
