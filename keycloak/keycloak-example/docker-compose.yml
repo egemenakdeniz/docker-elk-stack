@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: keycloak-postgres
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: admin
+    volumes:
+      - kc_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U keycloak -d keycloak" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4.7
+    container_name: keycloak
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: [ "start-dev", "--import-realm" ]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: postgres
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: admin
+
+      KEYCLOAK_ADMIN: keycloak
+      KEYCLOAK_ADMIN_PASSWORD: keycloak
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    volumes:
+      - ./keycloak/import:/opt/keycloak/data/import
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  projecthub-db:
+    image: postgres:18-alpine
+    container_name: projecthub-db
+    environment:
+      POSTGRES_DB: projecthub
+      POSTGRES_USER: projecthub
+      POSTGRES_PASSWORD: projecthub
+    volumes:
+      - projecthub_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U projecthub -d projecthub" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  projecthub-api:
+    platform: linux/amd64
+    build:
+      context: ./projecthub-api
+      dockerfile: Dockerfile
+    container_name: projecthub-api
+    depends_on:
+      projecthub-db:
+        condition: service_healthy
+    environment:
+      DB_HOST: projecthub-db
+      DB_PORT: 5432
+      DB_NAME: projecthub
+      DB_USER: projecthub
+      DB_PASSWORD: projecthub
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/projecthub/protocol/openid-connect/certs
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+
+  projecthub-web:
+    platform: linux/amd64
+    build:
+      context: ./projecthub-web
+      dockerfile: Dockerfile
+    container_name: projecthub-web
+    environment:
+      VITE_API_BASE_URL: http://localhost:8081
+    ports:
+      - "5173:5173"
+    restart: unless-stopped
+
+volumes:
+  kc_pgdata:
+  projecthub_pgdata:
